@@ -1,0 +1,12 @@
+.git
+.idea
+.vscode
+.env
+target
+keys
+backups
+logs
+uploads
+*.sql
+!src/main/resources/*.sql
+*.log

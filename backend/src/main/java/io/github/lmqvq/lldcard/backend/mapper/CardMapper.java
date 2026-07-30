@@ -1,0 +1,422 @@
+package io.github.lmqvq.lldcard.backend.mapper;
+
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
+import io.github.lmqvq.lldcard.backend.entity.Card;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+
+/**
+ * 卡密数据访问层
+ */
+@Repository
+public class CardMapper {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public CardMapper(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+        ensureColumnsExist();
+    }
+
+    private void ensureColumnsExist() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN device_id VARCHAR(255)");
+        } catch (Exception e) {
+            // Ignore if column exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN ip_address VARCHAR(255)");
+        } catch (Exception e) {
+            // Ignore if column exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN api_key_id BIGINT");
+        } catch (Exception e) {
+            // Ignore if column exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN machine_code VARCHAR(255)");
+        } catch (Exception e) {
+            // Ignore if column exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD INDEX idx_machine_code (machine_code)");
+        } catch (Exception e) {
+            // Ignore if index exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN stack_time_if_same_machine TINYINT(1) NOT NULL DEFAULT 0");
+        } catch (Exception e) {
+            // exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN merged_into_card_id BIGINT NULL");
+        } catch (Exception e) {
+            // exists
+        }
+        try {
+            jdbcTemplate.execute("ALTER TABLE cards ADD COLUMN allow_self_unbind TINYINT(1) NOT NULL DEFAULT 0 COMMENT '允许用户在首页自助解绑机器码'");
+        } catch (Exception e) {
+            // exists
+        }
+        System.out.println("Successfully updated cards table columns.");
+    }
+
+    /**
+     * 更新卡密状态
+     * @param ids 卡密ID列表
+     * @param status 新状态
+     */
+    public void updateStatus(List<Long> ids, int status) {
+        if (ids == null || ids.isEmpty()) return;
+
+        String sql = "UPDATE cards SET status = ? WHERE id IN (" +
+                     String.join(",", java.util.Collections.nCopies(ids.size(), "?")) + ")";
+
+        Object[] args = new Object[ids.size() + 1];
+        args[0] = status;
+        for (int i = 0; i < ids.size(); i++) {
+            args[i + 1] = ids.get(i);
+        }
+
+        jdbcTemplate.update(sql, args);
+    }
+
+    /**
+     * 统计所有卡密数量
+     */
+    public int countTotalCards() {
+        String sql = "SELECT COUNT(*) FROM cards";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        return count != null ? count : 0;
+    }
+
+    /**
+     * 统计已使用卡密数量
+     */
+    public int countUsedCards() {
+        String sql = "SELECT COUNT(*) FROM cards WHERE status IN (1, 4)";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        return count != null ? count : 0;
+    }
+
+    /**
+     * 统计有效卡密数量
+     */
+    public int countActiveCards() {
+        String sql = "SELECT COUNT(*) FROM cards WHERE status = 0";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        return count != null ? count : 0;
+    }
+
+    /**
+     * 获取最近N天的卡密使用趋势
+     * @param days 天数
+     * @return 每日使用数量列表
+     */
+    public List<Map<String, Object>> getUsageTrend(int days) {
+        String sql = "SELECT DATE(use_time) as date, COUNT(*) as count " +
+                     "FROM cards " +
+                     "WHERE use_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY) " +
+                     "AND status IN (1, 4) " +
+                     "GROUP BY DATE(use_time) " +
+                     "ORDER BY date ASC";
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("date", rs.getDate("date").toString());
+            map.put("count", rs.getInt("count"));
+            return map;
+        }, days);
+    }
+
+    /**
+     * 查找可用卡密
+     * @param type 卡密类型 (time/count)
+     * @param value 规格值 (duration or total_count)
+     * @param limit 数量
+     * @return 卡密列表
+     */
+    public List<Card> findAvailableCards(String type, int value, int limit) {
+        String sql;
+        if ("time".equals(type)) {
+            sql = "SELECT * FROM cards WHERE card_type = ? AND duration = ? AND status = 0 LIMIT ?";
+        } else {
+            sql = "SELECT * FROM cards WHERE card_type = ? AND total_count = ? AND status = 0 LIMIT ?";
+        }
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            Card card = new Card();
+            card.setId(rs.getLong("id"));
+            card.setCardKey(rs.getString("card_key"));
+            // ... other fields if needed
+            return card;
+        }, type, value, limit);
+    }
+
+    /**
+     * 更新卡密使用信息
+     * @param id 卡密ID
+     * @param useTime 使用时间
+     * @param deviceId 设备ID
+     * @param ipAddress IP地址
+     */
+    public void updateUsage(Long id, java.time.LocalDateTime useTime, String deviceId, String ipAddress) {
+        String sql = "UPDATE cards SET status = 1, use_time = ?, device_id = ?, ip_address = ? WHERE id = ?";
+        jdbcTemplate.update(sql, Timestamp.valueOf(useTime), deviceId, ipAddress, id);
+    }
+
+    /**
+     * 按 encrypted_key 同步主表（高级卡密核销用）。时间卡需写入 expire_time，管理端列表与倒计时依赖该字段。
+     */
+    public void updateUsageByHash(String cardHash, java.time.LocalDateTime useTime, int status, int remainingCount,
+                                  java.time.LocalDateTime expireTime, String machineCode) {
+        String sql = "UPDATE cards SET status = ?, use_time = ?, remaining_count = ?, expire_time = ?, machine_code = ? WHERE encrypted_key = ?";
+        jdbcTemplate.update(sql, status, Timestamp.valueOf(useTime), remainingCount,
+                expireTime != null ? Timestamp.valueOf(expireTime) : null, machineCode, cardHash);
+    }
+
+    /**
+     * 更新卡密信息
+     */
+    public void update(Card card) {
+        String sql = "UPDATE cards SET status = ?, use_time = ?, expire_time = ?, remaining_count = ?, " +
+                     "device_id = ?, ip_address = ?, machine_code = ?, duration = ?, total_count = ?, allow_reverify = ?, " +
+                     "stack_time_if_same_machine = ?, allow_self_unbind = ?, merged_into_card_id = ? WHERE id = ?";
+        jdbcTemplate.update(sql,
+            card.getStatus(),
+            card.getUseTime() != null ? Timestamp.valueOf(card.getUseTime()) : null,
+            card.getExpireTime() != null ? Timestamp.valueOf(card.getExpireTime()) : null,
+            card.getRemainingCount(),
+            card.getDeviceId(),
+            card.getIpAddress(),
+            card.getMachineCode(),
+            card.getDuration(),
+            card.getTotalCount(),
+            card.getAllowReverify(),
+            Boolean.TRUE.equals(card.getStackTimeIfSameMachine()) ? 1 : 0,
+            Boolean.TRUE.equals(card.getAllowSelfUnbind()) ? 1 : 0,
+            card.getMergedIntoCardId(),
+            card.getId()
+        );
+    }
+
+    /**
+     * 根据卡密查找
+     * @param cardKey 卡密
+     * @return Card对象
+     */
+    public Card findByCardKey(String cardKey) {
+        String sql = "SELECT * FROM cards WHERE card_key = ?";
+        try {
+            return jdbcTemplate.queryForObject(sql, new CardRowMapper(), cardKey);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 根据卡密列表查找
+     * @param cardKeys 卡密列表
+     * @return Card对象列表
+     */
+    public List<Card> findByCardKeys(List<String> cardKeys) {
+        if (cardKeys == null || cardKeys.isEmpty()) {
+            return new ArrayList<>();
+        }
+        String sql = "SELECT * FROM cards WHERE card_key IN (" +
+                     String.join(",", Collections.nCopies(cardKeys.size(), "?")) + ")";
+        return jdbcTemplate.query(sql, new CardRowMapper(), cardKeys.toArray());
+    }
+
+    /**
+     * 批量插入卡密
+     */
+    public void batchInsert(List<Card> cards) {
+        String sql = "INSERT INTO cards (card_key, encrypted_key, card_type, duration, total_count, remaining_count, status, verify_method, encryption_type, allow_reverify, create_time, creator_type, creator_id, creator_name, api_key_id, stack_time_if_same_machine, allow_self_unbind, merged_into_card_id) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                Card card = cards.get(i);
+                ps.setString(1, card.getCardKey());
+                ps.setString(2, card.getEncryptedKey());
+                ps.setString(3, card.getCardType());
+                ps.setInt(4, card.getDuration());
+                ps.setInt(5, card.getTotalCount());
+                ps.setInt(6, card.getRemainingCount());
+                ps.setInt(7, card.getStatus());
+                ps.setString(8, card.getVerifyMethod());
+                ps.setString(9, card.getEncryptionType());
+                ps.setInt(10, card.getAllowReverify());
+                ps.setTimestamp(11, Timestamp.valueOf(card.getCreateTime()));
+                ps.setString(12, card.getCreatorType());
+                ps.setLong(13, card.getCreatorId());
+                ps.setString(14, card.getCreatorName());
+                if (card.getApiKeyId() != null) {
+                    ps.setLong(15, card.getApiKeyId());
+                } else {
+                    ps.setNull(15, java.sql.Types.BIGINT);
+                }
+                ps.setInt(16, Boolean.TRUE.equals(card.getStackTimeIfSameMachine()) ? 1 : 0);
+                ps.setInt(17, Boolean.TRUE.equals(card.getAllowSelfUnbind()) ? 1 : 0);
+                if (card.getMergedIntoCardId() != null) {
+                    ps.setLong(18, card.getMergedIntoCardId());
+                } else {
+                    ps.setNull(18, java.sql.Types.BIGINT);
+                }
+            }
+
+            @Override
+            public int getBatchSize() {
+                return cards.size();
+            }
+        });
+    }
+
+    /**
+     * 获取所有卡密
+     */
+    public List<Card> findByApiKeyId(Long apiKeyId) {
+        String sql = "SELECT * FROM cards WHERE api_key_id = ? ORDER BY create_time DESC";
+        return jdbcTemplate.query(sql, new CardRowMapper(), apiKeyId);
+    }
+
+    public List<Card> findAll() {
+        String sql = "SELECT * FROM cards ORDER BY create_time DESC";
+        return jdbcTemplate.query(sql, new CardRowMapper());
+    }
+
+    /**
+     * 查找同机器码上可作为「时长叠加锚点」的候选时间卡（需结合 card_status / 有效期在业务层筛选）。
+     */
+    public List<Card> listStackAnchorCandidates(String machineCode, Long excludeCardId) {
+        if (machineCode == null || machineCode.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Long ex = excludeCardId != null ? excludeCardId : -1L;
+        String sql = "SELECT * FROM cards WHERE machine_code = ? AND card_type = 'time' AND status = 1 AND id <> ?";
+        return jdbcTemplate.query(sql, new CardRowMapper(), machineCode, ex);
+    }
+
+    public void updateExpireTimeById(Long cardId, java.time.LocalDateTime expireTime) {
+        jdbcTemplate.update("UPDATE cards SET expire_time = ? WHERE id = ?",
+                expireTime != null ? Timestamp.valueOf(expireTime) : null, cardId);
+    }
+
+    /** 核销「续期叠加」的卡：标记合并状态并记录续期到哪张主卡 */
+    public void markCardMergedInto(Long consumedCardId, Long anchorCardId, java.time.LocalDateTime useTime,
+                                   String machineCode, String deviceId, String ipAddress) {
+        jdbcTemplate.update(
+                "UPDATE cards SET status = 4, merged_into_card_id = ?, use_time = ?, expire_time = NULL, machine_code = ?, device_id = ?, ip_address = ? WHERE id = ?",
+                anchorCardId,
+                Timestamp.valueOf(useTime),
+                machineCode,
+                deviceId,
+                ipAddress,
+                consumedCardId);
+    }
+
+    public void delete(Long id) {
+        jdbcTemplate.update("DELETE FROM cards WHERE id = ?", id);
+    }
+
+    /** 仅更新 status，用于管理员启用/暂停 */
+    public void updateStatusOnly(Long id, int status) {
+        jdbcTemplate.update("UPDATE cards SET status = ? WHERE id = ?", status, id);
+    }
+
+    /** 按 encrypted_key 补写 expire_time（高级时间卡历史数据修复） */
+    public void updateExpireTimeByHash(String cardHash, java.time.LocalDateTime expireTime) {
+        jdbcTemplate.update(
+                "UPDATE cards SET expire_time = ? WHERE encrypted_key = ?",
+                expireTime != null ? Timestamp.valueOf(expireTime) : null,
+                cardHash);
+    }
+
+    public Card findById(Long id) {
+        String sql = "SELECT * FROM cards WHERE id = ?";
+        try {
+            return jdbcTemplate.queryForObject(sql, new CardRowMapper(), id);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    private static class CardRowMapper implements RowMapper<Card> {
+        @Override
+        public Card mapRow(ResultSet rs, int rowNum) throws SQLException {
+            Card card = new Card();
+            card.setId(rs.getLong("id"));
+            card.setCardKey(rs.getString("card_key"));
+            card.setEncryptedKey(rs.getString("encrypted_key"));
+            card.setCardType(rs.getString("card_type"));
+            card.setDuration(rs.getInt("duration"));
+            card.setTotalCount(rs.getInt("total_count"));
+            card.setRemainingCount(rs.getInt("remaining_count"));
+            card.setStatus(rs.getInt("status"));
+            card.setVerifyMethod(rs.getString("verify_method"));
+            card.setEncryptionType(rs.getString("encryption_type"));
+            card.setAllowReverify(rs.getInt("allow_reverify"));
+            if (rs.getTimestamp("create_time") != null) {
+                card.setCreateTime(rs.getTimestamp("create_time").toLocalDateTime());
+            }
+            if (rs.getTimestamp("use_time") != null) {
+                card.setUseTime(rs.getTimestamp("use_time").toLocalDateTime());
+            }
+            if (rs.getTimestamp("expire_time") != null) {
+                card.setExpireTime(rs.getTimestamp("expire_time").toLocalDateTime());
+            }
+            card.setCreatorType(rs.getString("creator_type"));
+            card.setCreatorId(rs.getLong("creator_id"));
+            card.setCreatorName(rs.getString("creator_name"));
+            try {
+                card.setDeviceId(rs.getString("device_id"));
+                card.setIpAddress(rs.getString("ip_address"));
+            } catch (SQLException e) {
+                // Ignore
+            }
+            try {
+                long apiKeyId = rs.getLong("api_key_id");
+                if (!rs.wasNull()) {
+                    card.setApiKeyId(apiKeyId);
+                }
+            } catch (SQLException e) {
+                // Ignore
+            }
+            try {
+                card.setMachineCode(rs.getString("machine_code"));
+            } catch (SQLException e) {
+                // Ignore
+            }
+            try {
+                card.setStackTimeIfSameMachine(rs.getInt("stack_time_if_same_machine") == 1);
+            } catch (SQLException ignored) {
+            }
+            try {
+                card.setAllowSelfUnbind(rs.getInt("allow_self_unbind") == 1);
+            } catch (SQLException ignored) {
+            }
+            try {
+                long merged = rs.getLong("merged_into_card_id");
+                if (!rs.wasNull()) {
+                    card.setMergedIntoCardId(merged);
+                }
+            } catch (SQLException ignored) {
+            }
+            return card;
+        }
+    }
+}

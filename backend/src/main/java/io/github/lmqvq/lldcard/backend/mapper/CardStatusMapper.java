@@ -1,0 +1,84 @@
+package io.github.lmqvq.lldcard.backend.mapper;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
+import io.github.lmqvq.lldcard.backend.entity.CardStatus;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+
+@Repository
+public class CardStatusMapper {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public CardStatusMapper(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public void insert(CardStatus cardStatus) {
+        String sql = "INSERT INTO card_status (card_hash, remain_count, total_count, expire_time, is_valid) VALUES (?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql,
+            cardStatus.getCardHash(),
+            cardStatus.getRemainCount(),
+            cardStatus.getTotalCount(),
+            cardStatus.getExpireTime() != null ? Timestamp.valueOf(cardStatus.getExpireTime()) : null,
+            cardStatus.getIsValid()
+        );
+    }
+
+    public CardStatus findByCardHash(String cardHash) {
+        String sql = "SELECT * FROM card_status WHERE card_hash = ?";
+        try {
+            return jdbcTemplate.queryForObject(sql, new RowMapper<CardStatus>() {
+                @Override
+                public CardStatus mapRow(ResultSet rs, int rowNum) throws SQLException {
+                    CardStatus c = new CardStatus();
+                    c.setId(rs.getLong("id"));
+                    c.setCardHash(rs.getString("card_hash"));
+                    c.setRemainCount(rs.getInt("remain_count"));
+                    c.setTotalCount(rs.getInt("total_count"));
+                    if (rs.getTimestamp("expire_time") != null) {
+                        c.setExpireTime(rs.getTimestamp("expire_time").toLocalDateTime());
+                    }
+                    if (rs.getTimestamp("last_use_time") != null) {
+                        c.setLastUseTime(rs.getTimestamp("last_use_time").toLocalDateTime());
+                    }
+                    c.setIsValid(rs.getInt("is_valid"));
+                    return c;
+                }
+            }, cardHash);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    public void updateUsage(String cardHash, int newCount, java.time.LocalDateTime useTime) {
+        String sql = "UPDATE card_status SET remain_count = ?, last_use_time = ? WHERE card_hash = ?";
+        jdbcTemplate.update(sql, newCount, Timestamp.valueOf(useTime), cardHash);
+    }
+
+    public void deleteByCardHash(String cardHash) {
+        String sql = "DELETE FROM card_status WHERE card_hash = ?";
+        jdbcTemplate.update(sql, cardHash);
+    }
+
+    public void updateIsValid(String cardHash, int isValid) {
+        String sql = "UPDATE card_status SET is_valid = ? WHERE card_hash = ?";
+        jdbcTemplate.update(sql, isValid, cardHash);
+    }
+
+    /** 首次激活时间卡时写入 expire_time */
+    public void activateExpireTime(String cardHash, java.time.LocalDateTime expireTime) {
+        String sql = "UPDATE card_status SET expire_time = ? WHERE card_hash = ?";
+        jdbcTemplate.update(sql, Timestamp.valueOf(expireTime), cardHash);
+    }
+
+    /** 管理端同步高级次数卡在 card_status 中的剩余/总次数（核销逻辑读此表） */
+    public void updateQuota(String cardHash, int remainCount, int totalCount) {
+        String sql = "UPDATE card_status SET remain_count = ?, total_count = ? WHERE card_hash = ?";
+        jdbcTemplate.update(sql, remainCount, totalCount, cardHash);
+    }
+}

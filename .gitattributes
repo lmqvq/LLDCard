@@ -1,0 +1,19 @@
+* text=auto
+
+*.cmd text eol=crlf
+
+*.conf text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.java text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.properties text eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+*.vue text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf

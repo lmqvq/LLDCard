@@ -1,0 +1,14 @@
+.git
+.github
+.workflow
+.env
+.env.*
+!.env.example
+node_modules
+dist
+backend
+docker
+*.sql
+*.log
+README.md
+NOTICE.md

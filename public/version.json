@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "buildDate": "2026-07-31",
+  "repoUrl": "https://github.com/lmqvq/LLDCard",
+  "upstreamUrl": "https://github.com/xiaoxiaoguai-yyds/xxgkami-pro",
+  "changelog": [
+    "项目统一重命名为 LLDCard，并更新前后端品牌与包命名空间",
+    "新增前端、后端、MySQL 和 Redis 的 Docker Compose 部署",
+    "移除公开仓库中的运行时密钥、数据库备份和真实业务数据",
+    "新增首次管理员安全初始化、健康检查和环境变量配置",
+    "保留上游项目来源声明，移除原作者个人联系方式与赞助入口"
+  ]
+}
