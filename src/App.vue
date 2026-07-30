@@ -63,9 +63,9 @@ const checkLoginStatus = async () => {
 }
 
 // 显示登录页面
-const showLogin = () => {
+const showLogin = (type = 'user') => {
   currentPage.value = 'login'
-  loginType.value = 'user'
+  loginType.value = type === 'admin' ? 'admin' : 'user'
 }
 
 // 处理登录成功

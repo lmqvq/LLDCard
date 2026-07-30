@@ -7,7 +7,7 @@
           <span class="brand-label">LLDCard</span>
         </button>
         <div class="nav-actions">
-          <button type="button" class="login-btn" @click="emit('showLogin')">
+          <button type="button" class="login-btn" @click="emit('showLogin', 'admin')">
             登录管理
           </button>
         </div>

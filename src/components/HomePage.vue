@@ -36,7 +36,7 @@
             </svg>
             在线解绑
           </button>
-          <button class="login-btn" @click="goToLogin">
+          <button class="login-btn" @click="goToAdminLogin">
             <svg class="login-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
               <polyline points="10,17 15,12 10,7"/>
@@ -88,7 +88,7 @@
               </div>
             </div>
             <div class="hero-actions">
-              <button class="cta-button primary" @click="goToLogin">
+              <button class="cta-button primary" @click="goToUserLogin">
                 开始使用
                 <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <line x1="7" y1="17" x2="17" y2="7"/>
@@ -382,8 +382,12 @@ import { defineEmits } from 'vue'
 
 const emit = defineEmits(['showLogin', 'goOnlineUnbind'])
 
-const goToLogin = () => {
-  emit('showLogin')
+const goToAdminLogin = () => {
+  emit('showLogin', 'admin')
+}
+
+const goToUserLogin = () => {
+  emit('showLogin', 'user')
 }
 
 const goOnlineUnbind = () => {
