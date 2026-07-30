@@ -20,10 +20,11 @@ LLDCard 是一个基于 Vue 3、Vite、Spring Boot、MySQL 和 Redis 的卡密�
 cp .env.example .env
 ```
 
-编辑 `.env`，至少替换以下 3 个密码：
+编辑 `.env`，至少替换以下 4 个密码：
 
 - `MYSQL_ROOT_PASSWORD`
 - `MYSQL_PASSWORD`
+- `REDIS_PASSWORD`
 - `LLDCARD_ADMIN_PASSWORD`
 
 密码不得使用示例值。首次管理员密码至少需要 12 个字符。
@@ -81,6 +82,7 @@ mvn spring-boot:run
 | `SPRING_DATASOURCE_USERNAME` | 数据库用户名 |
 | `SPRING_DATASOURCE_PASSWORD` | 数据库密码 |
 | `SPRING_DATA_REDIS_HOST` | Redis 主机 |
+| `SPRING_DATA_REDIS_PASSWORD` | Redis 密码 |
 | `LLDCARD_BOOTSTRAP_ADMIN_USERNAME` | 首次管理员用户名 |
 | `LLDCARD_BOOTSTRAP_ADMIN_PASSWORD` | 首次管理员密码 |
 | `CORS_ALLOWED_ORIGINS` | 允许的跨域来源，多个值用逗号分隔 |

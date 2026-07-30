@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,14 +22,7 @@ class DeploymentConfigurationTest {
     @Test
     @SuppressWarnings("unchecked")
     void composeDefinesHealthyServiceChain() throws IOException {
-        Path composePath = PROJECT_ROOT.resolve("docker-compose.yml");
-        Map<String, Object> root;
-
-        try (InputStream input = Files.newInputStream(composePath)) {
-            root = new Yaml().load(input);
-        }
-
-        Map<String, Object> services = (Map<String, Object>) root.get("services");
+        Map<String, Object> services = loadComposeServices();
         assertEquals(Set.of("mysql", "redis", "backend", "frontend"), services.keySet());
 
         for (String serviceName : services.keySet()) {
@@ -47,6 +41,26 @@ class DeploymentConfigurationTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void composeRequiresRedisPasswordForRedisAndBackend() throws IOException {
+        Map<String, Object> services = loadComposeServices();
+        Map<String, Object> redis = (Map<String, Object>) services.get("redis");
+        Map<String, Object> redisEnvironment = (Map<String, Object>) redis.get("environment");
+        List<String> redisCommand = (List<String>) redis.get("command");
+        Map<String, Object> redisHealthcheck = (Map<String, Object>) redis.get("healthcheck");
+        List<String> healthcheckCommand = (List<String>) redisHealthcheck.get("test");
+
+        String requiredPassword = "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}";
+        assertEquals(requiredPassword, redisEnvironment.get("REDIS_PASSWORD"));
+        assertTrue(String.join(" ", redisCommand).contains("--requirepass \"$${REDIS_PASSWORD}\""));
+        assertTrue(String.join(" ", healthcheckCommand).contains("REDISCLI_AUTH=\"$${REDIS_PASSWORD}\""));
+
+        Map<String, Object> backend = (Map<String, Object>) services.get("backend");
+        Map<String, Object> backendEnvironment = (Map<String, Object>) backend.get("environment");
+        assertEquals(requiredPassword, backendEnvironment.get("SPRING_DATA_REDIS_PASSWORD"));
+    }
+
+    @Test
     void publicSchemaContainsNoExportedRows() throws IOException {
         Path schemaPath = PROJECT_ROOT.resolve("docker/mysql/init/01-schema.sql");
         String schema = Files.readString(schemaPath);
@@ -54,6 +68,21 @@ class DeploymentConfigurationTest {
         assertTrue(schema.contains("CREATE TABLE"));
         assertFalse(schema.contains("INSERT INTO"));
         assertFalse(schema.toLowerCase().contains("小小怪"));
+        assertTrue(schema.contains("CREATE TABLE `SPRING_SESSION`"));
+        assertTrue(schema.contains("CREATE TABLE `SPRING_SESSION_ATTRIBUTES`"));
+        assertTrue(schema.contains("REFERENCES `SPRING_SESSION` (`PRIMARY_ID`)"));
+        assertFalse(schema.contains("CREATE TABLE `spring_session`"));
+        assertFalse(schema.contains("CREATE TABLE `spring_session_attributes`"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> loadComposeServices() throws IOException {
+        Path composePath = PROJECT_ROOT.resolve("docker-compose.yml");
+
+        try (InputStream input = Files.newInputStream(composePath)) {
+            Map<String, Object> root = new Yaml().load(input);
+            return (Map<String, Object>) root.get("services");
+        }
     }
 
     @SuppressWarnings("unchecked")

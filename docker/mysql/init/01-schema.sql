@@ -315,10 +315,10 @@ CREATE TABLE `social_users`  (
 -- ----------------------------
 
 -- ----------------------------
--- Table structure for spring_session
+-- Table structure for SPRING_SESSION
 -- ----------------------------
-DROP TABLE IF EXISTS `spring_session`;
-CREATE TABLE `spring_session`  (
+DROP TABLE IF EXISTS `SPRING_SESSION`;
+CREATE TABLE `SPRING_SESSION`  (
   `PRIMARY_ID` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `SESSION_ID` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `CREATION_TIME` bigint NOT NULL,
@@ -333,23 +333,23 @@ CREATE TABLE `spring_session`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- Seed data intentionally omitted for spring_session
+-- Seed data intentionally omitted for SPRING_SESSION
 -- ----------------------------
 
 -- ----------------------------
--- Table structure for spring_session_attributes
+-- Table structure for SPRING_SESSION_ATTRIBUTES
 -- ----------------------------
-DROP TABLE IF EXISTS `spring_session_attributes`;
-CREATE TABLE `spring_session_attributes`  (
+DROP TABLE IF EXISTS `SPRING_SESSION_ATTRIBUTES`;
+CREATE TABLE `SPRING_SESSION_ATTRIBUTES`  (
   `SESSION_PRIMARY_ID` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `ATTRIBUTE_NAME` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `ATTRIBUTE_BYTES` blob NOT NULL,
   PRIMARY KEY (`SESSION_PRIMARY_ID`, `ATTRIBUTE_NAME`) USING BTREE,
-  CONSTRAINT `SPRING_SESSION_ATTRIBUTES_FK` FOREIGN KEY (`SESSION_PRIMARY_ID`) REFERENCES `spring_session` (`PRIMARY_ID`) ON DELETE CASCADE ON UPDATE RESTRICT
+  CONSTRAINT `SPRING_SESSION_ATTRIBUTES_FK` FOREIGN KEY (`SESSION_PRIMARY_ID`) REFERENCES `SPRING_SESSION` (`PRIMARY_ID`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- Seed data intentionally omitted for spring_session_attributes
+-- Seed data intentionally omitted for SPRING_SESSION_ATTRIBUTES
 -- ----------------------------
 
 -- ----------------------------
